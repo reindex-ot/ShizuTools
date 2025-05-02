@@ -39,6 +39,7 @@ import kotlin.concurrent.timerTask
 class SoundMasterActivity : AppCompatActivity() {
     private lateinit var mediaProjectionManager: MediaProjectionManager
     private var accessLocked = arrayOf(false,false,false)
+
     private var packageSliders: MutableList<AudioOutputBase>
         get() = try {
             File(applicationContext.filesDir, FILENAME_SOUNDMASTER_PACKAGE_SLIDERS).let { file ->
@@ -59,12 +60,14 @@ class SoundMasterActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             log(e.stackTraceToString(), true)
-            File(applicationContext.filesDir, FILENAME_SOUNDMASTER_PACKAGE_SLIDERS).delete()
+            try{
+                File(applicationContext.filesDir, FILENAME_SOUNDMASTER_PACKAGE_SLIDERS).delete()
+            }catch (_: Exception){}
             mutableListOf()
         }
         set(value) {
             Thread{
-                if(accessLocked[0]) return@Thread
+                if(accessLocked[0]) Thread.sleep(500)
                 accessLocked[0] = true
                 val file = File(applicationContext.filesDir, FILENAME_SOUNDMASTER_PACKAGE_SLIDERS)
                 if (!file.exists()) {
@@ -95,7 +98,9 @@ class SoundMasterActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             log(e.stackTraceToString(), true)
-            File(applicationContext.filesDir, FILENAME_SOUNDMASTER_BALANCE_SLIDERS).delete()
+            try{
+                File(applicationContext.filesDir, FILENAME_SOUNDMASTER_BALANCE_SLIDERS).delete()
+            }catch (_: Exception){}
             mutableMapOf()
         }
         set(value) {
@@ -135,7 +140,9 @@ class SoundMasterActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             log(e.stackTraceToString(), true)
-            File(applicationContext.filesDir, FILENAME_SOUNDMASTER_BAND_SLIDERS).delete()
+            try {
+                File(applicationContext.filesDir, FILENAME_SOUNDMASTER_BAND_SLIDERS).delete()
+            }catch (_: Exception){}
             mutableMapOf()
         }
         set(value) {
@@ -173,18 +180,20 @@ class SoundMasterActivity : AppCompatActivity() {
                     SoundMasterService.getAudioDevices()
                 ) { device ->
                     val key = AudioOutputBase(pkg, device?.id ?: -1, 100f)
+                    val existingPackages = packageSliders
                     if (
-                        if (SoundMasterService.running) SoundMasterService.isAttachable(key)
-                        else (packageSliders.find { it.pkg == key.pkg && it.output == key.output } == null)
+                        (SoundMasterService.running && SoundMasterService.isAttachable(key))
+                        || (existingPackages.find { it.pkg == key.pkg && it.output == key.output } == null)
                     ) {
-                        val newPackages = packageSliders
-                        newPackages.add(key)
-                        packageSliders = newPackages
+                        existingPackages.add(key)
+                        packageSliders = existingPackages
                         if (SoundMasterService.running) SoundMasterService.onDynamicAttach(
                             key,
                             device
                         )
-                        updateSliders()
+                        Handler(mainLooper).postDelayed({
+                            updateSliders()
+                        },500)
                     } else combinationExists()
                     interacted()
                 }.show()
@@ -232,65 +241,63 @@ class SoundMasterActivity : AppCompatActivity() {
         btnImage.setOnClickListener {
             val state = SoundMasterService.running
             if (state) {
-                stopService(Intent(this, SoundMasterService::class.java))
-            } else if (packageSliders.size > 0) {
-                if (packageSliders.isEmpty()) {
-                    Toast.makeText(
-                        applicationContext,
-                        "No apps selected to control",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } else {
-                    ShizukuRunner.command("pm grant ${baseContext.packageName} android.permission.RECORD_AUDIO",
-                        object : ShizukuRunner.CommandResultListener {
-                            override fun onCommandResult(output: String, done: Boolean) {
-                                if (done) {
-                                    ShizukuRunner.command("appops set ${baseContext.packageName} PROJECT_MEDIA allow",
-                                        object : ShizukuRunner.CommandResultListener {
-                                            override fun onCommandResult(
-                                                output: String,
-                                                done: Boolean
-                                            ) {
-                                                if (done) {
-                                                    if (output.isBlank()) {
-                                                        mediaProjectionManager =
-                                                            applicationContext.getSystemService(
-                                                                Context.MEDIA_PROJECTION_SERVICE
-                                                            ) as MediaProjectionManager
-                                                        startActivityForResult(
-                                                            mediaProjectionManager.createScreenCaptureIntent(),
-                                                            MEDIA_PROJECTION_REQUEST_CODE
-                                                        )
-                                                    }
+                stopService(SoundMasterService.startingIntent)
+            } else if (packageSliders.isEmpty()) {
+                Toast.makeText(
+                    applicationContext,
+                    "No apps selected to control",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                ShizukuRunner.command("pm grant ${baseContext.packageName} android.permission.RECORD_AUDIO",
+                    object : ShizukuRunner.CommandResultListener {
+                        override fun onCommandResult(output: String, done: Boolean) {
+                            if (done) {
+                                ShizukuRunner.command("appops set ${baseContext.packageName} PROJECT_MEDIA allow",
+                                    object : ShizukuRunner.CommandResultListener {
+                                        override fun onCommandResult(
+                                            output: String,
+                                            done: Boolean
+                                        ) {
+                                            if (done) {
+                                                if (output.isBlank()) {
+                                                    mediaProjectionManager =
+                                                        applicationContext.getSystemService(
+                                                            Context.MEDIA_PROJECTION_SERVICE
+                                                        ) as MediaProjectionManager
+                                                    startActivityForResult(
+                                                        mediaProjectionManager.createScreenCaptureIntent(),
+                                                        MEDIA_PROJECTION_REQUEST_CODE
+                                                    )
                                                 }
                                             }
+                                        }
 
-                                            override fun onCommandError(error: String) {
-                                                Handler(mainLooper).post {
-                                                    Toast.makeText(
-                                                        applicationContext,
-                                                        getString(R.string.permission_error),
-                                                        Toast.LENGTH_LONG
-                                                    ).show()
-                                                    log(error)
-                                                }
+                                        override fun onCommandError(error: String) {
+                                            Handler(mainLooper).post {
+                                                Toast.makeText(
+                                                    applicationContext,
+                                                    getString(R.string.permission_error),
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                                log(error)
                                             }
-                                        })
-                                }
+                                        }
+                                    })
                             }
+                        }
 
-                            override fun onCommandError(error: String) {
-                                Handler(mainLooper).post {
-                                    Toast.makeText(
-                                        applicationContext,
-                                        getString(R.string.permission_error),
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                    log(error)
-                                }
+                        override fun onCommandError(error: String) {
+                            Handler(mainLooper).post {
+                                Toast.makeText(
+                                    applicationContext,
+                                    getString(R.string.permission_error),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                log(error)
                             }
-                        })
-                }
+                        }
+                    })
             }
             var count = 0
             Timer().schedule(timerTask {
@@ -345,23 +352,23 @@ class SoundMasterActivity : AppCompatActivity() {
     private fun updateSliders() {
         interacted()
         findViewById<TextView>(R.id.none).visibility =
-            if (packageSliders.size > 0) View.GONE else View.VISIBLE
+            if (packageSliders.isNotEmpty()) View.GONE else View.VISIBLE
         Thread {
             val adapter =
                 VolumeBarAdapter(this@SoundMasterActivity, packageSliders, onVolumeChanged = { app, vol ->
                     interacted()
-                    val newPackages = packageSliders
-                    newPackages[app] =
+                    val existingPackages = packageSliders
+                    SoundMasterService.setVolumeOf(existingPackages[app], vol)
+                    existingPackages[app] =
                         AudioOutputBase(packageSliders[app].pkg, packageSliders[app].output, vol)
-                    packageSliders = newPackages
-                    SoundMasterService.setVolumeOf(packageSliders[app], vol)
+                    packageSliders = existingPackages
                 }, onItemDetached = {
                     interacted()
-                    val newPackages = packageSliders
-                    newPackages.removeAt(it)
-                    packageSliders = newPackages
+                    val existingPackages = packageSliders
+                    SoundMasterService.onDynamicDetach(existingPackages[it.coerceIn(0,existingPackages.size - 1)])
+                    existingPackages.removeAt(it)
+                    packageSliders = existingPackages
                     updateSliders()
-                    SoundMasterService.onDynamicDetach(packageSliders[it.coerceAtMost(packageSliders.size - 1)])
                 }, onSliderGet = { app, sliderIndex ->
                     interacted()
                     val current = packageSliders[app]

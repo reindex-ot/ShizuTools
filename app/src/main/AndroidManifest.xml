@@ -29,6 +29,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AdbTools"
         tools:targetApi="31">
+
+        <service
+            android:name=".services.ThemePatcherService"
+            android:enabled="true"
+            android:exported="true"
+            android:foregroundServiceType="shortService" />
+
         <activity
             android:name=".DebugSettingsActivity"
             android:exported="false" />

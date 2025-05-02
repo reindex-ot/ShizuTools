@@ -56,7 +56,6 @@ class SoundMasterService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-
         //foreground service
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             return
@@ -182,6 +181,7 @@ class SoundMasterService : Service() {
             }
             if (apps.isNotEmpty()) {
                 running = true
+                startingIntent = intent
                 mediaProjection = mediaProjectionManager?.getMediaProjection(
                     Activity.RESULT_OK,
                     projectionData!!
@@ -197,12 +197,12 @@ class SoundMasterService : Service() {
     }
 
     private fun initVolumeBtnControl() {
-        val prefs by lazy { getSharedPreferences("soundmaster", Context.MODE_PRIVATE) }
+        val prefs by lazy { getSharedPreferences("soundmaster", MODE_PRIVATE) }
         mVolumeObserver = object : ContentObserver(Handler(mainLooper)) {
             var prevVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
             override fun onChange(selfChange: Boolean) {
                 super.onChange(selfChange)
-                if(prefs.getBoolean("show_on_volume_change", true)) {
+                if(prefs.getBoolean("show_on_volume_change", false)) {
                     val newVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
                     if (newVolume != prevVolume) {
                         prevVolume = newVolume
@@ -237,6 +237,7 @@ class SoundMasterService : Service() {
 
     companion object {
         var running = false
+        var startingIntent : Intent? = null
         var projectionData: Intent? = null
         var isAttachable: (AudioOutputKey) -> Boolean = { false }
         var onDynamicAttach: (AudioOutputBase, AudioDeviceInfo?) -> Unit = { _, _ -> }

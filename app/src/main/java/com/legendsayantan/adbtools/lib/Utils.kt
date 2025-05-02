@@ -49,7 +49,7 @@ class Utils {
             return getInstalledApplications(PackageManager.GET_META_DATA)
         }
 
-        fun Context.postNotification(title: String, message: String, success: Boolean = true) {
+        fun Context.postNotification(title: String, message: String, success: Boolean = true,id:Int=0) {
             val channelId = "notifications"
 
             // Create the notification using NotificationCompat.
@@ -63,7 +63,7 @@ class Utils {
             // Show the notification.
             with(NotificationManagerCompat.from(applicationContext)) {
                 if (ActivityCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                    notify(0, notificationBuilder.build())
+                    notify(id, notificationBuilder.build())
                 }
             }
         }
